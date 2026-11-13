@@ -43,6 +43,8 @@ A tabela `news` possui os seguintes campos:
 
 A URL possui uma restrição de unicidade. Ao salvar uma notícia já existente, o
 registro é atualizado em vez de duplicado.
+O feed da aplicação carrega os registros dessa tabela; quando ela está vazia,
+a tela exibe `0 notícias coletadas`.
 
 Exemplo de uso:
 
