@@ -1,1 +1,3 @@
-# VeriUnB uses Python's standard library only.
+# webscrape.py uses only Python's standard library:
+# json, re, datetime, html.parser, urllib, and xml.etree.
+# No external packages are required for the scraper.
