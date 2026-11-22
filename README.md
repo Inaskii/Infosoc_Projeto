@@ -19,8 +19,29 @@ python3 main.py
 
 As fontes exibidas são carregadas temporariamente para a sessão, permitindo demonstrar
 a inclusão e remoção de links sem depender de um serviço externo. A classe
-`VerificationService` concentra a lógica de verificação e pode ser conectada a uma API
-ou modelo de IA.
+`VerificationService` mantém o fluxo demonstrativo da tela e também oferece métodos
+para análise e resumo com IA via OpenRouter.
+
+## OpenRouter
+
+Instale as dependências (`pip install -r requirements.txt`), copie `.env.example` para
+`.env` e preencha `OPENROUTER_API_KEY` com sua chave. O arquivo `.env` é ignorado pelo
+Git; nunca compartilhe nem versione a chave.
+
+O cliente está disponível em `llm_client.py`:
+
+```python
+from llm_client import ask_llm, ask_llm_json
+
+texto = ask_llm("Resuma este texto: ...", temperature=0.2)
+dados = ask_llm_json("Retorne um objeto JSON com uma chave resumo: ...")
+```
+
+O grupo também pode usar `VerificationService.analyze_claim_with_ai(claim_text, sources_context="")`,
+que retorna um `VerificationResult`, e `VerificationService.summarize_news_item(article_text)`,
+que retorna um resumo em texto. A análise de afirmações é limitada às fontes passadas:
+sem evidências suficientes, o resultado é inconclusivo e recomenda verificação humana.
+O método existente `verify(claim)` e o fluxo atual da tela permanecem inalterados.
 
 ## Banco de dados
 
