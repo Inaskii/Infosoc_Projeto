@@ -11,10 +11,33 @@ com Tkinter e baseada na identidade visual fornecida.
 As fontes Montserrat e Inter são usadas quando instaladas no sistema. Caso não estejam
 disponíveis, o Tkinter utiliza automaticamente uma fonte substituta, sem impedir a execução.
 
-## Executar
+## Inicialização
+
+Na pasta do projeto, crie e ative um ambiente virtual para isolar as dependências:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Atualize o gerenciador de pacotes e instale as dependências listadas em
+`requirements.txt`:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Depois, execute a aplicação:
 
 ```bash
 python3 main.py
+```
+
+Para desativar o ambiente virtual ao terminar:
+
+```bash
+deactivate
 ```
 
 As fontes exibidas são carregadas temporariamente para a sessão, permitindo demonstrar

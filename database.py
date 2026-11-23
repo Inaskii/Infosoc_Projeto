@@ -41,6 +41,27 @@ class NewsDatabase:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS news_embeddings (
+                    url TEXT PRIMARY KEY,
+                    embedding TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(url) REFERENCES news(url) ON DELETE CASCADE
+                )
+                """
+            )
+            columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(news_embeddings)")
+            }
+            if "created_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE news_embeddings "
+                    "ADD COLUMN created_at TEXT"
+                )
 
     def save_news(self, news: str | Iterable[Mapping[str, Any]]) -> int:
         """Insere ou atualiza notícias e retorna a quantidade processada.
@@ -97,6 +118,48 @@ class NewsDatabase:
         with self._connect() as connection:
             rows = connection.execute(query, parameters).fetchall()
         return [dict(row) for row in rows]
+
+    def save_embedding(
+        self,
+        url: str,
+        embedding: list[float],
+        model: str,
+    ) -> None:
+        """Salva ou atualiza o embedding vetorial associado a uma notícia."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO news_embeddings (
+                    url, embedding, model, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(url) DO UPDATE SET
+                    embedding = excluded.embedding,
+                    model = excluded.model,
+                    updated_at = excluded.updated_at
+                """,
+                (url, json.dumps(embedding), model, now, now),
+            )
+
+    def get_embeddings(self) -> list[dict[str, Any]]:
+        """Retorna notícias que possuem embeddings persistidos."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT n.url, n.title, n.published, n.summary, n.content,
+                       e.embedding, e.model
+                FROM news_embeddings AS e
+                JOIN news AS n ON n.url = e.url
+                """
+            ).fetchall()
+
+        results = []
+        for row in rows:
+            article = dict(row)
+            article["embedding"] = json.loads(article["embedding"])
+            results.append(article)
+        return results
 
     @staticmethod
     def _parse_news(news: str | Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
