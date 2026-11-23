@@ -11,106 +11,17 @@ import requests
 from dotenv import load_dotenv
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODELS = (
     "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3.5-lightning:free",
     "openrouter/free",
 )
 
-HEADERS = {
-    "Authorization": "",
-    "Content-Type": "application/json",
-}
-
 load_dotenv()
 
 
 class OpenRouterError(Exception):
     """An API, configuration, or response error suitable for display to users."""
-
-def get_openrouter_models(model_type: str) -> list[dict[str, Any]]:
-    """
-    Retorna os modelos disponíveis de acordo com o tipo:
-    - embedding
-    - text-only
-    - multimodal
-    """
-
-    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-
-    if not api_key:
-        raise OpenRouterError(
-            "Chave OpenRouter não configurada. Defina OPENROUTER_API_KEY no arquivo .env."
-        )
-
-    if model_type == "embedding":
-        url = f"{BASE_URL}/embeddings/models"
-
-    elif model_type in ("text-only", "multimodal"):
-        url = f"{BASE_URL}/models"
-
-    else:
-        raise ValueError("Tipo de modelo inválido.")
-
-    params = {
-        "sort": "pricing-low-to-high"
-    }
-    headers = {
-        **HEADERS,
-        "Authorization": f"Bearer {api_key}",
-    }
-
-    if model_type == "text-only":
-        params["output_modalities"] = "text"
-        params["endpoints"] = "/api/v1/chat/completions"
-
-    elif model_type == "multimodal":
-        params["output_modalities"] = "text"
-        params["endpoints"] = "/api/v1/chat/completions"
-
-    response = requests.get(
-        url,
-        headers=headers,
-        params=params,
-        timeout=20
-    )
-
-    response.raise_for_status()
-
-    models = response.json().get("data", [])
-
-    # Classificação dos modelos
-    if model_type == "text-only":
-        models = [
-            model for model in models
-            if model.get("architecture", {}).get("input_modalities", []) == ["text"]
-        ]
-
-    elif model_type == "multimodal":
-        models = [
-            model for model in models
-            if any(
-                modality != "text"
-                for modality in model.get("architecture", {}).get("input_modalities", [])
-            )
-        ]
-
-    # Embeddings já vêm filtrados pelo endpoint
-    return models
-
-def get_cheapest_model(model_type: str) -> str:
-    """
-    Retorna o modelo mais barato disponível no catálogo.
-    """
-
-    models = get_openrouter_models(model_type)
-
-    if not models:
-        return DEFAULT_MODELS[0]
-
-    return models[0]["id"]
-
 
 
 def ask_llm(
@@ -128,16 +39,9 @@ def ask_llm(
     if timeout <= 0:
         raise ValueError("O timeout deve ser maior que zero.")
 
-    selected_models = (
-        [get_cheapest_model("text-only")]
-        if models is None
-        else list(models)
-    )
+    selected_models = list(DEFAULT_MODELS if models is None else models)
     if not selected_models or any(not model.strip() for model in selected_models):
         raise ValueError("Informe ao menos um modelo OpenRouter válido.")
-
-    #debug
-    print(f"\nModelos selecionados: {selected_models}\n")
 
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
