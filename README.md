@@ -60,11 +60,17 @@ texto = ask_llm("Resuma este texto: ...", temperature=0.2)
 dados = ask_llm_json("Retorne um objeto JSON com uma chave resumo: ...")
 ```
 
-O grupo também pode usar `VerificationService.analyze_claim_with_ai(claim_text, sources_context="")`,
-que retorna um `VerificationResult`, e `VerificationService.summarize_news_item(article_text)`,
-que retorna um resumo em texto. A análise de afirmações é limitada às fontes passadas:
-sem evidências suficientes, o resultado é inconclusivo e recomenda verificação humana.
-O método existente `verify(claim)` e o fluxo atual da tela permanecem inalterados.
+O RAG usa a API de embeddings do OpenRouter com os modelos
+`nvidia/nemotron-3.5-embed-1b:free` e
+`nvidia/nemotron-3.5-embed-8b:free`. Os modelos podem ser configurados com a
+variável opcional `OPENROUTER_EMBED_MODEL`.
+
+O método `VerificationService.verify(question)` busca notícias no banco, gera ou reutiliza
+embeddings do campo `content`, compara-os com o embedding da pergunta e envia as fontes
+mais relevantes ao OpenRouter para gerar uma resposta. A tela do verificador exibe essa
+resposta e as fontes utilizadas. `VerificationService.analyze_claim_with_ai(claim_text,
+sources_context="")` continua disponível para análise estruturada de afirmações, e
+`VerificationService.summarize_news_item(article_text)` retorna um resumo em texto.
 
 ## Banco de dados
 
