@@ -1,13 +1,17 @@
 __pycache__/
 *.py[cod]
 
-/.venv/
+.venv/
+venv/
 /venv/
+/.venv/
 
 .env
 .env.*
 !.env.example
 
+*.pyc
 *.log
-Thumbs.db
 Desktop.ini
+
+*.db

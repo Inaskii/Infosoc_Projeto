@@ -5,13 +5,30 @@ from __future__ import annotations
 import threading
 import tkinter as tk
 import webbrowser
+from html.parser import HTMLParser
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import Callable
+from typing import Any, Callable
 
-from services import DEMO_NEWS, DEMO_SOURCES, VerificationService, VerificationResult
+from database import NewsDatabase
+from services import DEMO_SOURCES, VerificationService, VerificationResult
 from storage import SourceStorage
 import theme
+
+
+class _VisibleTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
+def _plain_text(value: Any) -> str:
+    parser = _VisibleTextParser()
+    parser.feed(str(value))
+    return " ".join(" ".join(parser.parts).split())
 
 
 class Logo(tk.Canvas):
@@ -95,7 +112,8 @@ class App(tk.Tk):
         self.style = ttk.Style(self)
         self.style.theme_use("clam")
         theme.configure_ttk(self.style)
-        self.verifier = VerificationService()
+        self.database = NewsDatabase(Path(__file__).with_name("news.db"))
+        self.verifier = VerificationService(self.database)
         self.sources = [source.copy() for source in DEMO_SOURCES]
         self.screens: dict[str, ttk.Frame] = {}
         self.nav_buttons: dict[str, tk.Button] = {}
@@ -140,6 +158,8 @@ class App(tk.Tk):
                              font=theme.font(11, True) if key == name else theme.font(11))
         if name == "sources":
             self.screens[name].refresh()
+        elif name == "feed":
+            self.screens[name].refresh()
 
 
 class BaseScreen(ttk.Frame):
@@ -172,14 +192,36 @@ class FeedScreen(BaseScreen):
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
-        cards = ttk.Frame(canvas, style="App.TFrame")
-        canvas.create_window((0, 0), window=cards, anchor="nw", tags="cards")
-        cards.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
+        self.cards = ttk.Frame(canvas, style="App.TFrame")
+        canvas.create_window((0, 0), window=self.cards, anchor="nw", tags="cards")
+        self.cards.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure("cards", width=event.width))
-        for item in DEMO_NEWS:
-            self._card(cards, item)
+        self.refresh()
 
-    def _card(self, parent: tk.Misc, item: dict[str, str]) -> None:
+    def refresh(self) -> None:
+        for child in self.cards.winfo_children():
+            child.destroy()
+
+        news = self.app.database.get_news()
+        if not news:
+            tk.Label(
+                self.cards,
+                text="0 notícias coletadas",
+                bg=theme.LIGHT_GREEN,
+                fg=theme.BLUE,
+                font=theme.font(13, True),
+                padx=20,
+                pady=22,
+            ).pack(fill="x", padx=(2, 12))
+            return
+
+        for item in news:
+            self._card(self.cards, item)
+
+    def _card(self, parent: tk.Misc, item: dict[str, Any]) -> None:
+        raw_summary = item.get("summary") or item.get("content") or ""
+        summary = _plain_text(raw_summary) or "Sem resumo disponível."
+        published = item.get("published") or "Data não informada"
         card = tk.Frame(parent, bg=theme.WHITE, highlightbackground=theme.BORDER,
                         highlightthickness=1, padx=22, pady=18)
         card.pack(fill="x", pady=(0, 14), padx=(2, 12))
@@ -188,12 +230,12 @@ class FeedScreen(BaseScreen):
         tk.Label(card, text=item["title"], bg=theme.WHITE, fg=theme.BLUE,
                  font=theme.font(14, True), anchor="w", justify="left",
                  wraplength=800).pack(fill="x", pady=(12, 6))
-        tk.Label(card, text=item["summary"], bg=theme.WHITE, fg=theme.TEXT,
+        tk.Label(card, text=summary, bg=theme.WHITE, fg=theme.TEXT,
                  font=theme.font(10), anchor="w", justify="left",
                  wraplength=800).pack(fill="x")
         footer = tk.Frame(card, bg=theme.WHITE)
         footer.pack(fill="x", pady=(16, 0))
-        tk.Label(footer, text=f'{item["source"]}  ·  {item["date"]}', bg=theme.WHITE,
+        tk.Label(footer, text=f'{item["source"]}  ·  {published}', bg=theme.WHITE,
                  fg=theme.MUTED, font=theme.font(9)).pack(side="left")
         tk.Button(footer, text="Abrir matéria  →", relief="flat", borderwidth=0,
                   bg=theme.WHITE, fg=theme.BLUE, activeforeground=theme.GREEN,
@@ -204,8 +246,10 @@ class FeedScreen(BaseScreen):
 class VerifierScreen(BaseScreen):
     def __init__(self, parent: tk.Misc, app: App) -> None:
         super().__init__(parent, app)
-        self.title_label.configure(text="Verificador de boatos")
-        self.description_label.configure(text="Cole uma notícia ou afirmação para analisar.")
+        self.title_label.configure(text="Perguntas sobre notícias")
+        self.description_label.configure(
+            text="Faça uma pergunta sobre as notícias armazenadas no banco de dados."
+        )
         self.columnconfigure(0, weight=1)
         body = ttk.Frame(self, style="App.TFrame")
         body.grid(row=2, column=0, sticky="nsew")
@@ -217,7 +261,7 @@ class VerifierScreen(BaseScreen):
         self.text.grid(row=0, column=0, sticky="ew")
         controls = ttk.Frame(body, style="App.TFrame")
         controls.grid(row=1, column=0, sticky="ew", pady=(14, 20))
-        self.verify_button = RoundedButton(controls, "Verificar", self.verify)
+        self.verify_button = RoundedButton(controls, "Perguntar", self.verify)
         self.verify_button.pack(side="left")
         RoundedButton(controls, "Limpar", self.clear, kind="secondary").pack(side="left", padx=10)
         self.status = ttk.Label(controls, style="Muted.TLabel")
@@ -241,7 +285,7 @@ class VerifierScreen(BaseScreen):
     def verify(self) -> None:
         claim = self.text.get("1.0", "end").strip()
         if not claim:
-            self.status.configure(text="Digite ou cole um texto antes de verificar.", foreground=theme.ERROR)
+            self.status.configure(text="Digite uma pergunta antes de continuar.", foreground=theme.ERROR)
             self.text.focus_set()
             return
         self.verify_button.state(["disabled"])
@@ -254,17 +298,26 @@ class VerifierScreen(BaseScreen):
         self.after(0, lambda: self._show_result(result))
 
     def _show_result(self, result: VerificationResult) -> None:
-        colors = {"Verdadeiro": theme.GREEN, "Falso": theme.ERROR,
-                  "Inconclusivo": theme.WARNING, "Erro": theme.ERROR}
-        icons = {"Verdadeiro": "✓", "Falso": "×", "Inconclusivo": "?", "Erro": "!"}
-        color = colors[result.verdict]
-        self.result_title.configure(text=f"{icons[result.verdict]}  {result.verdict}",
-                                    fg=color, font=theme.font(18, True))
+        if result.verdict is None:
+            title = "Resposta da IA"
+            color = theme.BLUE
+        else:
+            colors = {"Verdadeiro": theme.GREEN, "Falso": theme.ERROR,
+                      "Inconclusivo": theme.WARNING, "Erro": theme.ERROR}
+            icons = {"Verdadeiro": "✓", "Falso": "×", "Inconclusivo": "?", "Erro": "!"}
+            title = f"{icons[result.verdict]}  {result.verdict}"
+            color = colors[result.verdict]
+        self.result_title.configure(text=title, fg=color, font=theme.font(18, True))
         self.result_explanation.configure(text=result.explanation)
         prefix = "Fontes e evidências:\n" if result.sources else ""
         self.sources_label.configure(text=prefix + "\n".join(f"• {source}" for source in result.sources))
         self.result.configure(bg=theme.LIGHT_GREEN if result.verdict == "Verdadeiro" else theme.WHITE)
-        self.status.configure(text="Análise concluída.", foreground=theme.GREEN if result.verdict != "Erro" else theme.ERROR)
+        if result.verdict is None:
+            status, status_color = "Resposta gerada.", theme.GREEN
+        else:
+            status = "Análise concluída."
+            status_color = theme.ERROR if result.verdict == "Erro" else theme.GREEN
+        self.status.configure(text=status, foreground=status_color)
         self.verify_button.state(["!disabled"])
         self.result.grid()
 
