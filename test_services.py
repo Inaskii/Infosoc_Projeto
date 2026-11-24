@@ -45,7 +45,7 @@ class VerificationServiceTests(unittest.TestCase):
             database,
             embedding_service,
             scrape_sources=[
-                {"name": "Portal UnB", "url": "https://feed.example.test/rss"}
+                {"name": "Portal UnB", "url": "https://noticias.unb.br/"}
             ],
         )
 
@@ -56,7 +56,7 @@ class VerificationServiceTests(unittest.TestCase):
         self.assertEqual(result.explanation, "Resposta gerada")
         self.assertEqual(
             result.sources,
-            ("https://feed.example.test/rss",),
+            ("https://noticias.unb.br/",),
         )
         self.assertEqual(
             embedding_service.embed.call_args_list,
@@ -75,7 +75,7 @@ class VerificationServiceTests(unittest.TestCase):
         prompt = ask_llm.call_args.args[0]
         self.assertIn("Qual é a notícia mais recente?", prompt)
         self.assertIn("[Fonte 1] Notícia B", prompt)
-        self.assertIn("URL da fonte: https://feed.example.test/rss", prompt)
+        self.assertIn("URL da fonte: https://noticias.unb.br/", prompt)
         self.assertNotIn("https://example.test/b", prompt)
         self.assertNotIn("https://example.test/empty", prompt)
         self.assertNotIn("unconfigured.test", prompt)
@@ -104,7 +104,7 @@ class VerificationServiceTests(unittest.TestCase):
             database,
             embedding_service,
             scrape_sources=[
-                {"name": "Portal UnB", "url": "https://feed.example.test/rss"}
+                {"name": "Portal UnB", "url": "https://noticias.unb.br/"}
             ],
         )
 

@@ -9,14 +9,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app_paths import database_path
+
 
 class NewsDatabase:
     """Armazena notícias em SQLite, usando a URL como identificador único."""
 
-    def __init__(self, path: str | Path = "news.db") -> None:
-        self.path = Path(path)
-        if self.path.parent != Path("."):
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, path: str | Path | None = None) -> None:
+        self.path = Path(path) if path is not None else database_path()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self._create_table()
 
     def _connect(self) -> sqlite3.Connection:
@@ -66,7 +67,7 @@ class NewsDatabase:
     def save_news(self, news: str | Iterable[Mapping[str, Any]]) -> int:
         """Insere ou atualiza notícias e retorna a quantidade processada.
 
-        ``news`` pode ser o JSON retornado por ``Scrape.scrape_data()`` ou
+        ``news`` pode ser o JSON retornado por ``ScrapeWeb.scrape_data()`` ou
         uma coleção de dicionários de notícias.
         """
         articles = self._parse_news(news)
@@ -178,12 +179,12 @@ class NewsDatabase:
 
 
 if __name__ == "__main__":
-    from webscrape import Scrape, load_scrape_sources
+    from webscrape import ScrapeWeb, load_scrape_sources
 
-    database = NewsDatabase(Path(__file__).with_name("news.db"))
+    database = NewsDatabase()
     saved = 0
     for source in load_scrape_sources():
-        scraper = Scrape(
+        scraper = ScrapeWeb(
             source["url"],
             max_articles=5,
             source_name=source["name"],

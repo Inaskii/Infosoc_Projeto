@@ -1,19 +1,19 @@
 import json
-import re
-from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
-from xml.etree import ElementTree
+from urllib.parse import urldefrag, urljoin, urlparse
 
-SCRAPE_URLS_PATH = Path(__file__).resolve().with_name("scrape_urls.json")
+import trafilatura
+
+from app_paths import ensure_scrape_urls_file
 
 
-def load_scrape_sources(path: str | Path = SCRAPE_URLS_PATH) -> list[dict[str, str]]:
-    """Load and validate source names and RSS/Atom feed URLs from JSON."""
-    with Path(path).open(encoding="utf-8") as file:
+def load_scrape_sources(path: str | Path | None = None) -> list[dict[str, str]]:
+    """Load and validate source names and homepage URLs from JSON."""
+    source_path = (
+        ensure_scrape_urls_file() if path is None else Path(path)
+    )
+    with source_path.open(encoding="utf-8") as file:
         sources = json.load(file)
 
     if not isinstance(sources, list):
@@ -43,51 +43,68 @@ def load_scrape_sources(path: str | Path = SCRAPE_URLS_PATH) -> list[dict[str, s
     return validated_sources
 
 
-class _ArticleContentParser(HTMLParser):
-    """Extrai texto de parágrafos da área principal de uma página HTML."""
+class _LinkParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: list[str] = []
 
-    _CONTENT_TAGS = {"article", "main"}
-    _IGNORED_TAGS = {"script", "style", "noscript", "svg", "nav", "footer", "header"}
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        if tag != "a":
+            return
+        href = next((value for name, value in attrs if name == "href"), None)
+        if href:
+            self.links.append(href)
 
+
+class _ArticleTitleParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self._ignored_depth = 0
-        self._paragraph: list[str] | None = None
-        self.paragraphs: list[str] = []
+        self._active_tag: str | None = None
+        self._active_rank = 0
+        self._parts: list[str] = []
+        self._title_rank = 0
+        self.semantic_title_count = 0
+        self.title = ""
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in self._IGNORED_TAGS:
-            self._ignored_depth += 1
-        elif tag == "p" and not self._ignored_depth:
-            self._paragraph = []
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        if self._active_tag or tag not in {"h1", "h2"}:
+            return
+        attributes = dict(attrs)
+        self._active_tag = tag
+        if tag == "h2" and "name" in (attributes.get("itemprop") or "").split():
+            self._active_rank = 3
+        else:
+            self._active_rank = 2 if tag == "h1" else 1
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in self._IGNORED_TAGS and self._ignored_depth:
-            self._ignored_depth -= 1
-        elif tag == "p" and self._paragraph is not None:
-            text = self._normalize(" ".join(self._paragraph))
-            if text:
-                self.paragraphs.append(text)
-            self._paragraph = None
+        if tag != self._active_tag:
+            return
+        title = " ".join(" ".join(self._parts).split())
+        if title and self._active_rank == 3:
+            self.semantic_title_count += 1
+        if title and self._active_rank > self._title_rank:
+            self.title = title
+            self._title_rank = self._active_rank
+        self._active_tag = None
+        self._parts.clear()
 
     def handle_data(self, data: str) -> None:
-        if self._paragraph is not None and not self._ignored_depth:
-            self._paragraph.append(data)
-
-    @staticmethod
-    def _normalize(text: str) -> str:
-        text = re.sub(r"\s+", " ", text).strip()
-        return re.sub(r"\s+([,.;:!?])", r"\1", text)
+        if self._active_tag:
+            self._parts.append(data)
 
 
-class Scrape:
+class ScrapeWeb:
     def __init__(
         self,
         url: str,
-        max_articles: int = 20,
+        max_articles: int = 10,
         *,
         source_name: str | None = None,
-    ):
+    ) -> None:
         if max_articles < 1:
             raise ValueError("O limite de notícias deve ser maior que zero.")
         self.url = url
@@ -95,96 +112,110 @@ class Scrape:
         self.source_name = source_name
 
     def scrape_data(self) -> str:
-        """Coleta todas as notícias do feed e retorna um JSON."""
+        """Coleta notícias encontradas na homepage e retorna um JSON."""
         if not self.url:
             print("URL não fornecida. Nenhum dado será raspado.")
             return "[]"
 
-        request = Request(self.url, headers={"User-Agent": "VeriUnB/1.0"})
-        with urlopen(request, timeout=15) as response:
-            feed = ElementTree.fromstring(response.read())
+        homepage = trafilatura.fetch_url(self.url)
+        if not homepage:
+            print(f"Não foi possível acessar a homepage: {self.url}")
+            return "[]"
 
-        channel = self._find_element(feed, "channel")
-        feed_source = self.source_name or (
-            self._find_text(channel, "title") if channel is not None else ""
-        ) or self._find_text(feed, "title") or self.url
-        articles = []
-        for item in self._entries(feed)[: self.max_articles]:
-            article_url = self._find_text(item, "link")
-            if not article_url:
-                # Atom stores the URL as an attribute on the link element.
-                link = self._find_element(item, "link")
-                article_url = link.get("href", "") if link is not None else ""
-
-            if not article_url:
+        parser = _LinkParser()
+        parser.feed(homepage)
+        base_url = urlparse(self.url)
+        site_host = base_url.hostname
+        article_urls: dict[int, list[str]] = {2: [], 3: []}
+        seen_urls = {urldefrag(self.url).url}
+        for href in parser.links:
+            article_url = urldefrag(urljoin(self.url, href)).url
+            if not self._is_article_url(article_url, site_host):
                 continue
+            parsed_url = urlparse(article_url)
+            article_url = f"https://{site_host}{parsed_url.path.rstrip('/')}"
+            if article_url in seen_urls:
+                continue
+            seen_urls.add(article_url)
+            segment_count = len(parsed_url.path.strip("/").split("/"))
+            article_urls[segment_count].append(article_url)
 
-            content = self._fetch_article_content(article_url)
-            articles.append(
-                {
-                    "title": self._find_text(item, "title") or "Sem título",
-                    "url": article_url,
-                    "published": (
-                        self._find_text(item, "pubDate")
-                        or self._find_text(item, "published")
-                        or self._find_text(item, "updated")
-                        or datetime.now(timezone.utc).isoformat()
-                    ),
-                    "source": feed_source,
-                    "summary": (
-                        self._find_text(item, "description")
-                        or self._find_text(item, "summary")
-                        or ""
-                    ),
-                    "content": content,
-                }
-            )
+        articles = []
+        for segment_count in (2, 3):
+            for article_url in article_urls[segment_count]:
+                if len(articles) >= self.max_articles:
+                    break
+
+                downloaded = trafilatura.fetch_url(article_url)
+                if not downloaded:
+                    continue
+
+                title_parser = _ArticleTitleParser()
+                title_parser.feed(downloaded)
+                if title_parser.semantic_title_count > 1:
+                    continue
+
+                metadata = trafilatura.extract_metadata(
+                    downloaded,
+                    default_url=article_url,
+                )
+                content = trafilatura.extract(
+                    downloaded,
+                    url=article_url,
+                    include_comments=False,
+                    include_tables=False,
+                    include_images=False,
+                    include_links=False,
+                    favor_precision=True,
+                )
+                if not content:
+                    continue
+
+                paragraphs = content.strip().splitlines()
+                title = (
+                    title_parser.title
+                    or getattr(metadata, "title", None)
+                    or "Sem título"
+                )
+                articles.append(
+                    {
+                        "title": title,
+                        "url": article_url,
+                        "published": getattr(metadata, "date", None) or "",
+                        "source": (
+                            self.source_name
+                            or getattr(metadata, "sitename", None)
+                            or base_url.netloc
+                        ),
+                        "summary": paragraphs[0] if paragraphs else "",
+                        "content": content,
+                    }
+                )
 
         return json.dumps(articles, ensure_ascii=False, indent=2)
 
     @staticmethod
-    def _fetch_article_content(article_url: str) -> str:
-        request = Request(article_url, headers={"User-Agent": "VeriUnB/1.0"})
-        try:
-            with urlopen(request, timeout=15) as response:
-                parser = _ArticleContentParser()
-                charset = response.headers.get_content_charset() or "utf-8"
-                parser.feed(response.read().decode(charset, errors="replace"))
-        except (HTTPError, URLError, TimeoutError, ValueError) as error:
-            print(f"Não foi possível coletar o conteúdo de {article_url}: {error}")
-            return ""
-
-        return "\n\n".join(parser.paragraphs)
-
-    @staticmethod
-    def _entries(feed: ElementTree.Element) -> list[ElementTree.Element]:
-        """Retorna itens RSS ou entradas Atom, independentemente do namespace."""
-        return [
-            element
-            for element in feed.iter()
-            if Scrape._local_name(element.tag) in {"item", "entry"}
-        ]
-
-    @staticmethod
-    def _find_element(
-        parent: ElementTree.Element, name: str
-    ) -> ElementTree.Element | None:
-        for element in parent.iter():
-            if Scrape._local_name(element.tag) == name:
-                return element
-        return None
-
-    @staticmethod
-    def _find_text(parent: ElementTree.Element, name: str) -> str:
-        element = Scrape._find_element(parent, name)
-        return "".join(element.itertext()).strip() if element is not None else ""
-
-    @staticmethod
-    def _local_name(tag: str) -> str:
-        return tag.rsplit("}", 1)[-1]
+    def _is_article_url(url: str, site_host: str | None) -> bool:
+        parsed_url = urlparse(url)
+        host = parsed_url.hostname
+        path = parsed_url.path.strip("/")
+        path_parts = path.split("/") if path else []
+        is_unb_host = bool(host and (host == "unb.br" or host.endswith(".unb.br")))
+        return (
+            parsed_url.scheme == "https"
+            and host == site_host
+            and is_unb_host
+            and host is not None
+            and parsed_url.netloc.lower() in {host, f"{host}:443"}
+            and len(path_parts) in {2, 3}
+            and all(path_parts)
+        )
 
 
 if __name__ == "__main__":
-    for source in load_scrape_sources():
-        scraper = Scrape(source["url"], max_articles=5, source_name=source["name"])
-        print(scraper.scrape_data())
+    scraper = ScrapeWeb(
+        "https://unbciencia.unb.br/",
+        max_articles=20,
+        source_name="UnB Ciência",
+    )
+    print(scraper.scrape_data())

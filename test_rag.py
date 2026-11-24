@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from database import NewsDatabase
 from llm_client import ask_llm
 from rag import OpenRouterEmbeddingService, vector_search
-from webscrape import Scrape, load_scrape_sources
+from webscrape import ScrapeWeb, load_scrape_sources
 
 
 MAX_ARTICLES = 10
@@ -15,12 +13,12 @@ QUESTION = "Qual foi a última celebração realizada na UnB?"
 
 
 def main() -> None:
-    database = NewsDatabase(Path(__file__).with_name("news.db"))
+    database = NewsDatabase()
 
     print("1. Coletando notícias da UnB...")
     saved = 0
     for source in load_scrape_sources():
-        scraper = Scrape(
+        scraper = ScrapeWeb(
             source["url"],
             max_articles=MAX_ARTICLES,
             source_name=source["name"],

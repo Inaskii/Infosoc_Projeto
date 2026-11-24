@@ -11,6 +11,7 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
+from app_paths import ensure_user_env_file, user_env_path
 from database import NewsDatabase
 
 OPENROUTER_EMBEDDINGS_API_URL = "https://openrouter.ai/api/v1/embeddings"
@@ -18,7 +19,7 @@ DEFAULT_EMBEDDING_MODELS = (
     "nvidia/nemotron-3.5-embed-8b:free",
 )
 
-load_dotenv()
+load_dotenv(dotenv_path=ensure_user_env_file())
 
 
 class OpenRouterEmbeddingError(Exception):
@@ -61,7 +62,8 @@ class OpenRouterEmbeddingService:
         api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
         if not api_key:
             raise OpenRouterEmbeddingError(
-                "Chave OpenRouter não configurada. Defina OPENROUTER_API_KEY no arquivo .env."
+                "Chave OpenRouter não configurada. Defina OPENROUTER_API_KEY "
+                f"no ambiente ou em {user_env_path()}."
             )
 
         headers = {

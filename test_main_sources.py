@@ -29,7 +29,7 @@ class AppSourceTests(unittest.TestCase):
     def test_add_first_source_creates_the_config_file(self) -> None:
         source = {
             "name": "First portal",
-            "url": "https://example.test/feed.xml",
+            "url": "https://example.test/",
         }
         app = make_app([])
         app.scrape_config_error = "missing config"
@@ -45,11 +45,11 @@ class AppSourceTests(unittest.TestCase):
     def test_add_scrape_source_persists_and_updates_app_state(self) -> None:
         initial_source = {
             "name": "Portal UnB",
-            "url": "https://noticias.unb.br/?format=feed&type=rss",
+            "url": "https://noticias.unb.br/",
         }
         added_source = {
             "name": "Outro portal",
-            "url": "https://example.test/feed.xml",
+            "url": "https://example.test/",
         }
         app = make_app([initial_source])
         verifier = app.verifier
@@ -71,7 +71,7 @@ class AppSourceTests(unittest.TestCase):
     def test_add_scrape_source_rejects_duplicate_url(self) -> None:
         existing_source = {
             "name": "Portal UnB",
-            "url": "https://noticias.unb.br/?format=feed&type=rss",
+            "url": "https://noticias.unb.br/",
         }
         app = make_app([existing_source])
 
@@ -90,11 +90,11 @@ class AppSourceTests(unittest.TestCase):
     def test_remove_scrape_source_persists_and_updates_app_state(self) -> None:
         first_source = {
             "name": "Portal UnB",
-            "url": "https://noticias.unb.br/?format=feed&type=rss",
+            "url": "https://noticias.unb.br/",
         }
         source_to_remove = {
             "name": "Outro portal",
-            "url": "https://example.test/feed.xml",
+            "url": "https://example.test/",
         }
         app = make_app([first_source, source_to_remove])
 
@@ -115,7 +115,7 @@ class AppSourceTests(unittest.TestCase):
     def test_removing_last_source_saves_an_empty_list(self) -> None:
         source = {
             "name": "Portal UnB",
-            "url": "https://noticias.unb.br/?format=feed&type=rss",
+            "url": "https://noticias.unb.br/",
         }
         app = make_app([source])
 

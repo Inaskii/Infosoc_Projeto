@@ -40,15 +40,31 @@ Para desativar o ambiente virtual ao terminar:
 deactivate
 ```
 
-As fontes exibidas são carregadas de `scrape_urls.json`; inclusões e remoções pela tela
-de fontes são persistidas nesse arquivo. A classe `VerificationService` oferece análise
-de notícias com IA via OpenRouter.
+As fontes padrão vêm do `scrape_urls.json` distribuído com o projeto; inclusões e
+remoções pela tela de fontes são persistidas na cópia do usuário. A classe
+`VerificationService` oferece análise de notícias com IA via OpenRouter.
+
+O banco `news.db` e a configuração de fontes ficam em
+`~/.local/share/veriunb/`. Se `XDG_DATA_HOME` estiver definido, o diretório será
+`$XDG_DATA_HOME/veriunb/`. Na primeira execução, a configuração padrão é copiada
+para esse local; um `news.db` existente junto ao código também é migrado sem
+sobrescrever um banco já existente no diretório do usuário.
 
 ## OpenRouter
 
-Instale as dependências (`pip install -r requirements.txt`), copie `.env.example` para
-`.env` e preencha `OPENROUTER_API_KEY` com sua chave. O arquivo `.env` é ignorado pelo
-Git; nunca compartilhe nem versione a chave.
+No primeiro início, o aplicativo cria `~/.local/share/veriunb/.env` com
+`OPENROUTER_API_KEY=insira_a_chave_aqui`. Substitua o placeholder pela chave
+real. Se `XDG_DATA_HOME` estiver definido, o arquivo fica em
+`$XDG_DATA_HOME/veriunb/.env`. O `.env` é ignorado pelo Git; nunca compartilhe
+nem versione a chave.
+
+Para mover um `.env` existente da pasta do projeto no Linux:
+
+```bash
+mkdir -p ~/.local/share/veriunb
+mv .env ~/.local/share/veriunb/.env
+chmod 600 ~/.local/share/veriunb/.env
+```
 
 O cliente está disponível em `llm_client.py`:
 
@@ -84,7 +100,7 @@ A tabela `news` possui os seguintes campos:
 | `url` | Endereço da notícia, único no banco |
 | `title` | Título da notícia |
 | `published` | Data de publicação |
-| `source` | Fonte ou feed de origem |
+| `source` | Nome da fonte de origem |
 | `summary` | Resumo da notícia |
 | `content` | Conteúdo completo extraído |
 | `created_at` | Data de inserção no banco |
@@ -92,19 +108,19 @@ A tabela `news` possui os seguintes campos:
 
 A URL possui uma restrição de unicidade. Ao salvar uma notícia já existente, o
 registro é atualizado em vez de duplicado.
-Ao iniciar, a aplicação lê as URLs de `scrape_urls.json` e coleta os feeds em
-uma thread separada. Cada URL da lista é processada; a interface permanece
-responsiva e atualiza o feed ao final da coleta.
+Ao iniciar, a aplicação lê as homepages de `scrape_urls.json` e procura links
+internos para notícias em uma thread separada. Cada homepage é processada; a
+interface permanece responsiva e atualiza o feed ao final da coleta.
 
 Exemplo de uso:
 
 ```python
 from database import NewsDatabase
-from webscrape import Scrape, load_scrape_sources
+from webscrape_web import ScrapeWeb, load_scrape_sources
 
 database = NewsDatabase()
 for source in load_scrape_sources():
-    scraper = Scrape(
+    scraper = ScrapeWeb(
         source["url"],
         max_articles=5,
         source_name=source["name"],
@@ -120,7 +136,7 @@ noticias = database.get_news()
 [
   {
     "name": "Portal de Notícias da UnB",
-    "url": "https://noticias.unb.br/?format=feed&type=rss"
+    "url": "https://noticias.unb.br/"
   }
 ]
 ```
@@ -156,7 +172,7 @@ Infosoc_Projeto/
 | [`services.py`](services.py) | Contém a lógica de RAG separada da interface: `VerificationService` recupera notícias relevantes e `VerificationResult` representa a resposta e suas fontes. |
 | [`storage.py`](storage.py) | Implementa persistência local de fontes em JSON em `~/.veriunb/sources.json`. Também oferece carregamento, salvamento e validação de URLs com os esquemas `http` e `https`. |
 | [`theme.py`](theme.py) | Centraliza as cores, as famílias de fontes e os estilos Tkinter/ttk usados pela interface. |
-| [`requirements.txt`](requirements.txt) | Lista as dependências externas do projeto. Atualmente o código utiliza apenas bibliotecas padrão do Python. |
+| [`requirements.txt`](requirements.txt) | Lista as dependências externas do projeto, incluindo Trafilatura para extração de notícias. |
 | [`logo.png`](logo.png) | Logotipo claro exibido no cabeçalho das telas. |
 | [`logofundoazul.png`](logofundoazul.png) | Versão do logotipo exibida sobre a barra lateral azul. |
 | [`Identidade Visual – Verificador de Notícias UnB.pdf`](Identidade%20Visual%20%E2%80%93%20Verificador%20de%20Noti%CC%81cias%20UnB.pdf) | Guia visual da identidade da interface em formato PDF. |

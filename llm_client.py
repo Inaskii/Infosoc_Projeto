@@ -10,6 +10,8 @@ from typing import Any, Sequence
 import requests
 from dotenv import load_dotenv
 
+from app_paths import ensure_user_env_file, user_env_path
+
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODELS = (
     "google/gemma-4-31b-it:free",
@@ -17,7 +19,7 @@ DEFAULT_MODELS = (
     "openrouter/free",
 )
 
-load_dotenv()
+load_dotenv(dotenv_path=ensure_user_env_file())
 
 
 class OpenRouterError(Exception):
@@ -46,7 +48,8 @@ def ask_llm(
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
         raise OpenRouterError(
-            "Chave OpenRouter não configurada. Defina OPENROUTER_API_KEY no arquivo .env."
+            "Chave OpenRouter não configurada. Defina OPENROUTER_API_KEY "
+            f"no ambiente ou em {user_env_path()}."
         )
 
     headers = {

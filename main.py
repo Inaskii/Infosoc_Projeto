@@ -10,12 +10,12 @@ from html.parser import HTMLParser
 from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any, Callable
-from xml.etree import ElementTree
 
+from app_paths import SCRAPE_URLS_PATH
 from database import NewsDatabase
 from services import VerificationService, VerificationResult
 from storage import SourceStorage
-from webscrape import SCRAPE_URLS_PATH, Scrape, load_scrape_sources
+from webscrape import ScrapeWeb, load_scrape_sources
 import theme
 
 
@@ -100,7 +100,7 @@ class RoundedButton(tk.Canvas):
             self.command()
 
     def state(self, states: list[str]) -> None:
-        self.enabled = "!disabled" not in states
+        self.enabled = "!disabled" in states
         self.configure(cursor="hand2" if self.enabled else "arrow")
         self._draw(self.normal if self.enabled else "#AAB8C2")
 
@@ -115,7 +115,7 @@ class App(tk.Tk):
         self.style = ttk.Style(self)
         self.style.theme_use("clam")
         theme.configure_ttk(self.style)
-        self.database = NewsDatabase(Path(__file__).with_name("news.db"))
+        self.database = NewsDatabase()
         try:
             self.scrape_sources = load_scrape_sources()
             self.scrape_config_error = None
@@ -191,9 +191,12 @@ class App(tk.Tk):
         for source in self.scrape_sources:
             url = source["url"]
             try:
-                scraped_news = Scrape(url, source_name=source["name"]).scrape_data()
+                scraped_news = ScrapeWeb(
+                    url,
+                    source_name=source["name"],
+                ).scrape_data()
                 saved += self.database.save_news(scraped_news)
-            except (OSError, ValueError, ElementTree.ParseError, sqlite3.Error) as error:
+            except (OSError, ValueError, sqlite3.Error) as error:
                 errors.append(f"{url}: {error}")
 
         self.after(0, self._finish_news_scraping, saved, errors)
@@ -381,6 +384,7 @@ class VerifierScreen(BaseScreen):
                                       font=theme.font(9))
         self.sources_label.grid(row=2, column=0, sticky="ew", pady=(12, 0))
         self.result.grid_remove()
+        self._request_id = 0
 
     def verify(self) -> None:
         claim = self.text.get("1.0", "end").strip()
@@ -391,13 +395,20 @@ class VerifierScreen(BaseScreen):
         self.verify_button.state(["disabled"])
         self.status.configure(text="Processando…", foreground=theme.BLUE)
         self.result.grid_remove()
-        threading.Thread(target=self._worker, args=(claim,), daemon=True).start()
+        self._request_id += 1
+        threading.Thread(
+            target=self._worker,
+            args=(claim, self._request_id),
+            daemon=True,
+        ).start()
 
-    def _worker(self, claim: str) -> None:
+    def _worker(self, claim: str, request_id: int) -> None:
         result = self.app.verifier.verify(claim)
-        self.after(0, lambda: self._show_result(result))
+        self.after(0, lambda: self._show_result(result, request_id))
 
-    def _show_result(self, result: VerificationResult) -> None:
+    def _show_result(self, result: VerificationResult, request_id: int) -> None:
+        if request_id != self._request_id:
+            return
         if result.verdict is None:
             title = "Resposta da IA"
             color = theme.BLUE
@@ -422,10 +433,12 @@ class VerifierScreen(BaseScreen):
         self.result.grid()
 
     def clear(self) -> None:
+        self._request_id += 1
         self.text.delete("1.0", "end")
         self.status.configure(text="")
         self.result.grid_remove()
         self.verify_button.state(["!disabled"])
+        self.text.focus_set()
 
 
 class SourcesScreen(BaseScreen):

@@ -2,7 +2,6 @@
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Literal
 
 from database import NewsDatabase
@@ -29,7 +28,7 @@ class VerificationService:
         embedding_service: OpenRouterEmbeddingService | None = None,
         scrape_sources: Sequence[Mapping[str, str]] | None = None,
     ) -> None:
-        self.database = database or NewsDatabase(Path(__file__).with_name("news.db"))
+        self.database = database or NewsDatabase()
         self.embedding_service = embedding_service or OpenRouterEmbeddingService()
         self.scrape_sources = (
             [dict(source) for source in scrape_sources]
