@@ -40,10 +40,9 @@ Para desativar o ambiente virtual ao terminar:
 deactivate
 ```
 
-As fontes exibidas são carregadas temporariamente para a sessão, permitindo demonstrar
-a inclusão e remoção de links sem depender de um serviço externo. A classe
-`VerificationService` mantém o fluxo demonstrativo da tela e também oferece métodos
-para análise e resumo com IA via OpenRouter.
+As fontes exibidas são carregadas de `scrape_urls.json`; inclusões e remoções pela tela
+de fontes são persistidas nesse arquivo. A classe `VerificationService` oferece análise
+de notícias com IA via OpenRouter.
 
 ## OpenRouter
 
@@ -93,26 +92,43 @@ A tabela `news` possui os seguintes campos:
 
 A URL possui uma restrição de unicidade. Ao salvar uma notícia já existente, o
 registro é atualizado em vez de duplicado.
-O feed da aplicação carrega os registros dessa tabela; quando ela está vazia,
-a tela exibe `0 notícias coletadas`.
+Ao iniciar, a aplicação lê as URLs de `scrape_urls.json` e coleta os feeds em
+uma thread separada. Cada URL da lista é processada; a interface permanece
+responsiva e atualiza o feed ao final da coleta.
 
 Exemplo de uso:
 
 ```python
 from database import NewsDatabase
-from webscrape import Scrape
+from webscrape import Scrape, load_scrape_sources
 
-scraper = Scrape("https://noticias.unb.br/?format=feed&type=rss", max_articles=5)
 database = NewsDatabase()
-database.save_news(scraper.scrape_data())
+for source in load_scrape_sources():
+    scraper = Scrape(
+        source["url"],
+        max_articles=5,
+        source_name=source["name"],
+    )
+    database.save_news(scraper.scrape_data())
 
 noticias = database.get_news()
+```
+
+`scrape_urls.json` deve conter uma lista de fontes com `name` e `url`:
+
+```json
+[
+  {
+    "name": "Portal de Notícias da UnB",
+    "url": "https://noticias.unb.br/?format=feed&type=rss"
+  }
+]
 ```
 
 ## Telas
 
 - **Feed de notícias:** cartões com resumo, selo de verificação e abertura da matéria no navegador.
-- **Verificador de boatos:** entrada multilinha, validação, processamento em thread, resultado e fontes.
+- **Perguntas sobre notícias:** entrada multilinha, resposta baseada nas notícias salvas e fontes utilizadas.
 - **Fontes de notícias:** links iniciais, inclusão com validação de URL e remoção confirmada.
 
 ## Estrutura do projeto
@@ -137,7 +153,7 @@ Infosoc_Projeto/
 | Arquivo | Responsabilidade |
 |---|---|
 | [`main.py`](main.py) | Ponto de entrada da aplicação. Cria a janela principal com Tkinter, monta o menu lateral e as três telas, coordena a navegação e registra os componentes de interface. |
-| [`services.py`](services.py) | Contém a lógica de demonstração separada da interface: `VerificationService` executa a verificação, `VerificationResult` representa o resultado e os dados de `DEMO_NEWS` e `DEMO_SOURCES` fornecem notícias e fontes de exemplo. |
+| [`services.py`](services.py) | Contém a lógica de RAG separada da interface: `VerificationService` recupera notícias relevantes e `VerificationResult` representa a resposta e suas fontes. |
 | [`storage.py`](storage.py) | Implementa persistência local de fontes em JSON em `~/.veriunb/sources.json`. Também oferece carregamento, salvamento e validação de URLs com os esquemas `http` e `https`. |
 | [`theme.py`](theme.py) | Centraliza as cores, as famílias de fontes e os estilos Tkinter/ttk usados pela interface. |
 | [`requirements.txt`](requirements.txt) | Lista as dependências externas do projeto. Atualmente o código utiliza apenas bibliotecas padrão do Python. |
@@ -153,10 +169,6 @@ O fluxo principal começa em `main.py`, na classe `App`, que cria uma instância
 `VerificationService` e monta as telas `FeedScreen`, `VerifierScreen` e `SourcesScreen`.
 A classe `BaseScreen` define o cabeçalho comum das telas.
 
-- **Feed:** usa os dados demonstrativos de `DEMO_NEWS` e abre o endereço da matéria com `webbrowser`.
+- **Feed:** exibe as notícias do banco `news.db`, preenchido em segundo plano a partir das fontes de `scrape_urls.json`, e abre o endereço da matéria com `webbrowser`.
 - **Verificador:** envia o texto para `VerificationService` em uma thread separada e atualiza a interface com o resultado recebido.
-- **Fontes:** permite adicionar e remover fontes na sessão. `SourceDialog` coleta os dados e `SourceStorage.is_valid_url` valida os URLs.
-
-O módulo `storage.py` contém a infraestrutura de persistência em JSON, mas a versão atual
-da tela de fontes mantém os dados em memória e não chama `load()` ou `save()` durante a
-execução. As alterações feitas na lista são perdidas ao fechar a aplicação.
+- **Fontes:** `SourceDialog` coleta os dados, `SourceStorage.is_valid_url` valida os URLs e adições e remoções são salvas em `scrape_urls.json`.

@@ -178,11 +178,17 @@ class NewsDatabase:
 
 
 if __name__ == "__main__":
-    from webscrape import Scrape
+    from webscrape import Scrape, load_scrape_sources
 
-    scraper = Scrape("https://noticias.unb.br/?format=feed&type=rss", max_articles=5)
-    database = NewsDatabase()
-    saved = database.save_news(scraper.scrape_data())
+    database = NewsDatabase(Path(__file__).with_name("news.db"))
+    saved = 0
+    for source in load_scrape_sources():
+        scraper = Scrape(
+            source["url"],
+            max_articles=5,
+            source_name=source["name"],
+        )
+        saved += database.save_news(scraper.scrape_data())
     print(f"{saved} notícias salvas em {database.path}.\n")
     for article in database.get_news():
         print(f"{article['published']} - {article['title']} ({article['url']})")

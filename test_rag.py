@@ -7,21 +7,25 @@ from pathlib import Path
 from database import NewsDatabase
 from llm_client import ask_llm
 from rag import OpenRouterEmbeddingService, vector_search
-from webscrape import Scrape
+from webscrape import Scrape, load_scrape_sources
 
 
-NEWS_FEED_URL = "https://noticias.unb.br/?format=feed&type=rss"
 MAX_ARTICLES = 10
 QUESTION = "Qual foi a última celebração realizada na UnB?"
 
 
 def main() -> None:
     database = NewsDatabase(Path(__file__).with_name("news.db"))
-    scraper = Scrape(NEWS_FEED_URL, max_articles=MAX_ARTICLES)
 
     print("1. Coletando notícias da UnB...")
-    news_json = scraper.scrape_data()
-    saved = database.save_news(news_json)
+    saved = 0
+    for source in load_scrape_sources():
+        scraper = Scrape(
+            source["url"],
+            max_articles=MAX_ARTICLES,
+            source_name=source["name"],
+        )
+        saved += database.save_news(scraper.scrape_data())
     print(f"   {saved} notícias processadas e salvas no banco.")
 
     news = database.get_news(limit=MAX_ARTICLES)

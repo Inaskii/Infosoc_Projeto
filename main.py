@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 import tkinter as tk
 import webbrowser
@@ -9,10 +10,12 @@ from html.parser import HTMLParser
 from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any, Callable
+from xml.etree import ElementTree
 
 from database import NewsDatabase
-from services import DEMO_SOURCES, VerificationService, VerificationResult
+from services import VerificationService, VerificationResult
 from storage import SourceStorage
+from webscrape import SCRAPE_URLS_PATH, Scrape, load_scrape_sources
 import theme
 
 
@@ -113,12 +116,97 @@ class App(tk.Tk):
         self.style.theme_use("clam")
         theme.configure_ttk(self.style)
         self.database = NewsDatabase(Path(__file__).with_name("news.db"))
-        self.verifier = VerificationService(self.database)
-        self.sources = [source.copy() for source in DEMO_SOURCES]
+        try:
+            self.scrape_sources = load_scrape_sources()
+            self.scrape_config_error = None
+        except (OSError, ValueError) as error:
+            self.scrape_sources = []
+            self.scrape_config_error = str(error)
+        self.verifier = VerificationService(
+            self.database,
+            scrape_sources=self.scrape_sources,
+        )
+        self.sources = [source.copy() for source in self.scrape_sources]
         self.screens: dict[str, ttk.Frame] = {}
         self.nav_buttons: dict[str, tk.Button] = {}
         self._build_shell()
         self.show_screen("feed")
+        self._start_news_scraping()
+
+    def add_scrape_source(self, source: dict[str, str]) -> None:
+        name = source["name"].strip()
+        url = source["url"].strip()
+        if not name or not SourceStorage.is_valid_url(url):
+            raise ValueError("Informe um nome e uma URL http(s) válidos.")
+
+        source_to_add = {"name": name, "url": url}
+        try:
+            current_sources = load_scrape_sources(SCRAPE_URLS_PATH)
+        except FileNotFoundError:
+            current_sources = []
+        if any(
+            existing["name"].casefold() == name.casefold()
+            for existing in current_sources
+        ):
+            raise ValueError(f"A fonte '{name}' já está cadastrada.")
+        if any(existing["url"] == url for existing in current_sources):
+            raise ValueError(f"A URL '{url}' já está cadastrada.")
+
+        updated_sources = [existing.copy() for existing in current_sources]
+        updated_sources.append(source_to_add)
+        self._save_scrape_sources(updated_sources)
+
+    def remove_scrape_source(self, source: dict[str, str]) -> None:
+        current_sources = load_scrape_sources(SCRAPE_URLS_PATH)
+        updated_sources = [
+            existing
+            for existing in current_sources
+            if existing["url"] != source["url"]
+        ]
+        if len(updated_sources) == len(current_sources):
+            raise ValueError(f"A URL '{source['url']}' não está cadastrada.")
+        self._save_scrape_sources(updated_sources)
+
+    def _save_scrape_sources(self, sources: list[dict[str, str]]) -> None:
+        SourceStorage(SCRAPE_URLS_PATH).save(sources)
+        reloaded_sources = load_scrape_sources(SCRAPE_URLS_PATH)
+        self.scrape_sources = reloaded_sources
+        self.sources = [existing.copy() for existing in reloaded_sources]
+        self.verifier.scrape_sources = [
+            existing.copy() for existing in reloaded_sources
+        ]
+        self.scrape_config_error = None
+
+    def _start_news_scraping(self) -> None:
+        self.screens["feed"].set_scrape_status("Coletando notícias em segundo plano...")
+        threading.Thread(target=self._scrape_news, daemon=True).start()
+
+    def _scrape_news(self) -> None:
+        if self.scrape_config_error:
+            self.after(0, self._finish_news_scraping, 0, [self.scrape_config_error])
+            return
+
+        saved = 0
+        errors = []
+        for source in self.scrape_sources:
+            url = source["url"]
+            try:
+                scraped_news = Scrape(url, source_name=source["name"]).scrape_data()
+                saved += self.database.save_news(scraped_news)
+            except (OSError, ValueError, ElementTree.ParseError, sqlite3.Error) as error:
+                errors.append(f"{url}: {error}")
+
+        self.after(0, self._finish_news_scraping, saved, errors)
+
+    def _finish_news_scraping(self, saved: int, errors: list[str]) -> None:
+        feed_screen = self.screens["feed"]
+        feed_screen.refresh()
+        if errors:
+            status = f"Coleta concluída: {saved} notícia(s), {len(errors)} URL(s) com falha."
+            status = f"{status} {errors[0]}"
+        else:
+            status = f"Coleta concluída: {saved} notícia(s) processada(s)."
+        feed_screen.set_scrape_status(status)
 
     def _build_shell(self) -> None:
         self.sidebar = ttk.Frame(self, style="Sidebar.TFrame", width=320)
@@ -183,8 +271,17 @@ class FeedScreen(BaseScreen):
         super().__init__(parent, app)
         self.title_label.configure(text="Feed de notícias")
         self.description_label.configure(text="Acompanhe informações selecionadas e identificadas para a comunidade da UnB.")
+        self.rowconfigure(2, weight=0)
+        self.rowconfigure(3, weight=1)
+        self.scrape_status = ttk.Label(
+            self,
+            text="",
+            style="Muted.TLabel",
+            wraplength=850,
+        )
+        self.scrape_status.grid(row=2, column=0, sticky="w", pady=(0, 10))
         outer = ttk.Frame(self, style="App.TFrame")
-        outer.grid(row=2, column=0, sticky="nsew")
+        outer.grid(row=3, column=0, sticky="nsew")
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(0, weight=1)
         canvas = tk.Canvas(outer, bg=theme.BG, highlightthickness=0)
@@ -197,6 +294,9 @@ class FeedScreen(BaseScreen):
         self.cards.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure("cards", width=event.width))
         self.refresh()
+
+    def set_scrape_status(self, status: str) -> None:
+        self.scrape_status.configure(text=status)
 
     def refresh(self) -> None:
         for child in self.cards.winfo_children():
@@ -374,16 +474,36 @@ class SourcesScreen(BaseScreen):
         dialog = SourceDialog(self)
         self.wait_window(dialog)
         if dialog.value:
-            self.app.sources.append(dialog.value)
-            self.feedback.configure(text="Fonte adicionada à lista.")
+            try:
+                self.app.add_scrape_source(dialog.value)
+            except (OSError, ValueError) as error:
+                self.feedback.configure(
+                    text=f"Não foi possível adicionar a fonte: {error}",
+                    foreground=theme.ERROR,
+                )
+                return
+            self.feedback.configure(
+                text=f"Fonte adicionada em {SCRAPE_URLS_PATH}.",
+                foreground=theme.GREEN,
+            )
             self.refresh()
 
     def remove_source(self, index: int) -> None:
         source = self.app.sources[index]
         if not messagebox.askyesno("Confirmar remoção", f'Remover a fonte "{source["name"]}"?', parent=self):
             return
-        self.app.sources.pop(index)
-        self.feedback.configure(text="Fonte removida da lista.")
+        try:
+            self.app.remove_scrape_source(source)
+        except (OSError, ValueError) as error:
+            self.feedback.configure(
+                text=f"Não foi possível remover a fonte: {error}",
+                foreground=theme.ERROR,
+            )
+            return
+        self.feedback.configure(
+            text=f"Fonte removida de {SCRAPE_URLS_PATH}.",
+            foreground=theme.GREEN,
+        )
         self.refresh()
 
 
@@ -414,6 +534,7 @@ class SourceDialog(tk.Toplevel):
         RoundedButton(buttons, "Cancelar", self.destroy, kind="secondary").pack(side="right")
         RoundedButton(buttons, "Adicionar", self.submit).pack(side="right", padx=(0, 8))
         self.transient(parent)
+        self.wait_visibility()
         self.grab_set()
         self.name.focus_set()
 

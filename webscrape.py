@@ -2,9 +2,45 @@ import json
 import re
 from datetime import datetime, timezone
 from html.parser import HTMLParser
+from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
+
+SCRAPE_URLS_PATH = Path(__file__).resolve().with_name("scrape_urls.json")
+
+
+def load_scrape_sources(path: str | Path = SCRAPE_URLS_PATH) -> list[dict[str, str]]:
+    """Load and validate source names and RSS/Atom feed URLs from JSON."""
+    with Path(path).open(encoding="utf-8") as file:
+        sources = json.load(file)
+
+    if not isinstance(sources, list):
+        raise ValueError("scrape_urls.json deve conter uma lista de fontes.")
+
+    validated_sources = []
+    names = set()
+    for source in sources:
+        if not isinstance(source, dict):
+            raise ValueError("Cada fonte deve ser um objeto com name e url.")
+        name = source.get("name")
+        url = source.get("url")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Cada fonte deve ter um name não vazio.")
+        if not isinstance(url, str) or not url.strip():
+            raise ValueError("Cada fonte deve ter uma URL não vazia.")
+        name = name.strip()
+        url = url.strip()
+        if name in names:
+            raise ValueError(f"O nome da fonte está duplicado: {name}")
+        parsed_url = urlparse(url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise ValueError(f"URL de scraping inválida: {url}")
+        names.add(name)
+        validated_sources.append({"name": name, "url": url})
+
+    return validated_sources
 
 
 class _ArticleContentParser(HTMLParser):
@@ -45,11 +81,18 @@ class _ArticleContentParser(HTMLParser):
 
 
 class Scrape:
-    def __init__(self, url: str, max_articles: int = 10):
+    def __init__(
+        self,
+        url: str,
+        max_articles: int = 20,
+        *,
+        source_name: str | None = None,
+    ):
         if max_articles < 1:
             raise ValueError("O limite de notícias deve ser maior que zero.")
         self.url = url
         self.max_articles = max_articles
+        self.source_name = source_name
 
     def scrape_data(self) -> str:
         """Coleta todas as notícias do feed e retorna um JSON."""
@@ -62,7 +105,7 @@ class Scrape:
             feed = ElementTree.fromstring(response.read())
 
         channel = self._find_element(feed, "channel")
-        feed_source = (
+        feed_source = self.source_name or (
             self._find_text(channel, "title") if channel is not None else ""
         ) or self._find_text(feed, "title") or self.url
         articles = []
@@ -142,8 +185,6 @@ class Scrape:
 
 
 if __name__ == "__main__":
-    scraper = Scrape(
-        "https://noticias.unb.br/?format=feed&type=rss",
-        max_articles=5
-        )
-    print(scraper.scrape_data())
+    for source in load_scrape_sources():
+        scraper = Scrape(source["url"], max_articles=5, source_name=source["name"])
+        print(scraper.scrape_data())
