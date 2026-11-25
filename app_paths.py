@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
 
+from dotenv import dotenv_values
+
 APP_DIRECTORY_NAME = "veriunb"
+_OPENROUTER_KEY_PATTERN = re.compile(r"sk-or-v1-[A-Za-z0-9_-]{8,}\Z")
 
 
 def user_data_dir() -> Path:
@@ -46,6 +50,32 @@ def ensure_user_env_file(path: str | Path | None = None) -> Path:
     with os.fdopen(descriptor, "w", encoding="utf-8") as env_file:
         env_file.write("OPENROUTER_API_KEY=insira_a_chave_aqui\n")
     return target
+
+
+def _is_valid_openrouter_key(value: object) -> bool:
+    return isinstance(value, str) and _OPENROUTER_KEY_PATTERN.fullmatch(value.strip()) is not None
+
+
+def user_env_api_key(path: str | Path | None = None) -> str:
+    """Return a valid API key from the user's .env, without exposing it."""
+    env_file = Path(path) if path is not None else user_env_path()
+    if not env_file.is_file():
+        return ""
+    value = dotenv_values(env_file).get("OPENROUTER_API_KEY")
+    return value.strip() if _is_valid_openrouter_key(value) else ""
+
+
+def has_user_api_key() -> bool:
+    """Check whether the user's .env contains a valid OpenRouter key."""
+    return bool(user_env_api_key())
+
+
+def get_openrouter_api_key() -> str:
+    """Return a valid environment key or the current key stored in the user's .env."""
+    value = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if _is_valid_openrouter_key(value):
+        return value
+    return user_env_api_key()
 
 
 SCRAPE_URLS_PATH = user_data_dir() / "scrape_urls.json"

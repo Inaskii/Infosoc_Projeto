@@ -3,68 +3,89 @@
 Aplicação desktop do **VeriUnB — Verificador de Notícias da UnB**, criada
 com Tkinter e baseada na identidade visual fornecida.
 
-## Requisitos
+## Instalação no Debian/Ubuntu
 
-- Python 3.10 ou superior
-- Tkinter (em distribuições Debian/Ubuntu: `sudo apt install python3-tk`)
+1. Baixe o pacote `veriunb_1.0.0_amd64.deb`.
+2. Abra um terminal na pasta em que o arquivo foi baixado.
+3. Execute o comando:
 
-As fontes Montserrat e Inter são usadas quando instaladas no sistema. Caso não estejam
-disponíveis, o Tkinter utiliza automaticamente uma fonte substituta, sem impedir a execução.
+   ```bash
+   sudo apt install ./veriunb_1.0.0_amd64.deb
+   ```
 
-## Inicialização
+4. Crie a pasta de dados do usuário e abra o arquivo `.env`:
 
-Na pasta do projeto, crie e ative um ambiente virtual para isolar as dependências:
+   ```bash
+   mkdir -p ~/.local/share/veriunb
+   nano ~/.local/share/veriunb/.env
+   ```
+
+5. Adicione a linha abaixo, substituindo o valor de exemplo por uma chave
+   válida da OpenRouter. Salve e feche o editor:
+
+   ```dotenv
+   OPENROUTER_API_KEY=sk-or-v1-sua-chave
+   ```
+
+6. Abra o VeriUnB pelo menu de aplicativos. A configuração das fontes é criada
+   na primeira execução. Se o app já estiver aberto quando você editar o `.env`,
+   o aviso vermelho sobre a chave desaparecerá automaticamente, sem fechar ou
+   reiniciar o aplicativo. Não compartilhe sua chave.
+
+Se `XDG_DATA_HOME` estiver definido no seu ambiente, os arquivos ficam em
+`$XDG_DATA_HOME/veriunb/` em vez de `~/.local/share/veriunb/`.
+
+## Uso
+
+O aplicativo tem três telas:
+
+- **Feed de notícias:** apresenta as 20 notícias mais recentes coletadas das
+  fontes cadastradas. Use **Abrir matéria** para acessar a publicação no site
+  de origem.
+- **Perguntas sobre notícias (verificador de boatos):** digite uma pergunta ou
+  afirmação e clique em **Perguntar**. O aplicativo consulta as notícias
+  coletadas e apresenta uma resposta gerada por IA com as fontes utilizadas.
+  A resposta pode ser inconclusiva se não houver evidências suficientes;
+  confira as fontes antes de concluir se algo é fato ou fake.
+- **Fontes de notícias:** adicione as homepages de sites oficiais de notícias da
+  UnB ou remova fontes cadastradas. As fontes são usadas para coletar as
+  notícias exibidas no feed.
+
+Ao abrir o aplicativo, a coleta das notícias começa em segundo plano. É
+necessário ter acesso à internet para atualizar o feed e consultar a OpenRouter.
+
+## Arquivos de dados e chave da API
+
+No primeiro início, o aplicativo cria `scrape_urls.json` em
+`~/.local/share/veriunb/`. Se o `.env` ainda não existir, ele também cria o
+arquivo com um valor de exemplo:
+
+```dotenv
+OPENROUTER_API_KEY=insira_a_chave_aqui
+```
+
+Substitua o valor de exemplo por sua chave da OpenRouter. O banco SQLite
+`news.db` também é armazenado nessa pasta. Se `XDG_DATA_HOME` estiver definido,
+os arquivos ficam em `$XDG_DATA_HOME/veriunb/`. O aplicativo não sobrescreve
+os arquivos de configuração já existentes.
+
+O `.env` é ignorado pelo Git. Nunca compartilhe nem versione a chave.
+
+## Desenvolvimento
+
+Para executar a partir do código-fonte, é necessário Python 3.10 ou superior e
+Tkinter (em Debian/Ubuntu: `sudo apt install python3-tk`). Crie um ambiente
+virtual e instale as dependências:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-Atualize o gerenciador de pacotes e instale as dependências listadas em
-`requirements.txt`:
-
-```bash
-python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-```
-
-Depois, execute a aplicação:
-
-```bash
 python3 main.py
 ```
 
-Para desativar o ambiente virtual ao terminar:
-
-```bash
-deactivate
-```
-
-As fontes padrão vêm do `scrape_urls.json` distribuído com o projeto; inclusões e
-remoções pela tela de fontes são persistidas na cópia do usuário. A classe
-`VerificationService` oferece análise de notícias com IA via OpenRouter.
-
-O banco `news.db` e a configuração de fontes ficam em
-`~/.local/share/veriunb/`. Se `XDG_DATA_HOME` estiver definido, o diretório será
-`$XDG_DATA_HOME/veriunb/`. Na primeira execução, a configuração padrão é copiada
-para esse local; um `news.db` existente junto ao código também é migrado sem
-sobrescrever um banco já existente no diretório do usuário.
-
-## OpenRouter
-
-No primeiro início, o aplicativo cria `~/.local/share/veriunb/.env` com
-`OPENROUTER_API_KEY=insira_a_chave_aqui`. Substitua o placeholder pela chave
-real. Se `XDG_DATA_HOME` estiver definido, o arquivo fica em
-`$XDG_DATA_HOME/veriunb/.env`. O `.env` é ignorado pelo Git; nunca compartilhe
-nem versione a chave.
-
-Para mover um `.env` existente da pasta do projeto no Linux:
-
-```bash
-mkdir -p ~/.local/share/veriunb
-mv .env ~/.local/share/veriunb/.env
-chmod 600 ~/.local/share/veriunb/.env
-```
+As fontes Montserrat e Inter são usadas quando instaladas no sistema. Caso não
+estejam disponíveis, o Tkinter utiliza uma fonte substituta.
 
 O cliente está disponível em `llm_client.py`:
 
@@ -90,7 +111,7 @@ sources_context="")` continua disponível para análise estruturada de afirmaç�
 ## Banco de dados
 
 As notícias coletadas pelo scraper são armazenadas em um banco SQLite no arquivo
-`news.db`, criado automaticamente por `NewsDatabase`.
+`~/.local/share/veriunb/news.db`, criado automaticamente por `NewsDatabase`.
 
 A tabela `news` possui os seguintes campos:
 
@@ -116,7 +137,7 @@ Exemplo de uso:
 
 ```python
 from database import NewsDatabase
-from webscrape_web import ScrapeWeb, load_scrape_sources
+from webscrape import ScrapeWeb, load_scrape_sources
 
 database = NewsDatabase()
 for source in load_scrape_sources():
@@ -135,17 +156,21 @@ noticias = database.get_news()
 ```json
 [
   {
-    "name": "Portal de Notícias da UnB",
+    "name": "Portal UnB",
     "url": "https://noticias.unb.br/"
+  },
+  {
+    "name": "UnB Ciência",
+    "url": "https://unbciencia.unb.br/"
   }
 ]
 ```
 
 ## Telas
 
-- **Feed de notícias:** cartões com resumo, selo de verificação e abertura da matéria no navegador.
-- **Perguntas sobre notícias:** entrada multilinha, resposta baseada nas notícias salvas e fontes utilizadas.
-- **Fontes de notícias:** links iniciais, inclusão com validação de URL e remoção confirmada.
+- **Feed de notícias:** cartões das 20 notícias mais recentes, com resumo e abertura da matéria no navegador.
+- **Perguntas sobre notícias:** resposta baseada nas notícias coletadas, com indicação das fontes utilizadas.
+- **Fontes de notícias:** homepages de fontes oficiais da UnB, com inclusão e remoção pelo aplicativo.
 
 ## Estrutura do projeto
 
@@ -170,7 +195,7 @@ Infosoc_Projeto/
 |---|---|
 | [`main.py`](main.py) | Ponto de entrada da aplicação. Cria a janela principal com Tkinter, monta o menu lateral e as três telas, coordena a navegação e registra os componentes de interface. |
 | [`services.py`](services.py) | Contém a lógica de RAG separada da interface: `VerificationService` recupera notícias relevantes e `VerificationResult` representa a resposta e suas fontes. |
-| [`storage.py`](storage.py) | Implementa persistência local de fontes em JSON em `~/.veriunb/sources.json`. Também oferece carregamento, salvamento e validação de URLs com os esquemas `http` e `https`. |
+| [`storage.py`](storage.py) | Implementa persistência das fontes de notícias em JSON e valida URLs com os esquemas `http` e `https`. |
 | [`theme.py`](theme.py) | Centraliza as cores, as famílias de fontes e os estilos Tkinter/ttk usados pela interface. |
 | [`requirements.txt`](requirements.txt) | Lista as dependências externas do projeto, incluindo Trafilatura para extração de notícias. |
 | [`logo.png`](logo.png) | Logotipo claro exibido no cabeçalho das telas. |

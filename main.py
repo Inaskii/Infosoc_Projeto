@@ -11,7 +11,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any, Callable
 
-from app_paths import SCRAPE_URLS_PATH
+from app_paths import SCRAPE_URLS_PATH, has_user_api_key, user_env_path
 from database import NewsDatabase
 from services import VerificationService, VerificationResult
 from storage import SourceStorage
@@ -305,7 +305,7 @@ class FeedScreen(BaseScreen):
         for child in self.cards.winfo_children():
             child.destroy()
 
-        news = self.app.database.get_news()
+        news = self.app.database.get_news(limit=20)
         if not news:
             tk.Label(
                 self.cards,
@@ -385,6 +385,30 @@ class VerifierScreen(BaseScreen):
         self.sources_label.grid(row=2, column=0, sticky="ew", pady=(12, 0))
         self.result.grid_remove()
         self._request_id = 0
+        self.api_key_status = ttk.Label(
+            controls,
+            style="Muted.TLabel",
+            wraplength=600,
+        )
+        self.api_key_status.pack(side="left", padx=8)
+        self._refresh_api_key_status()
+        self.after(1000, self._poll_api_key_status)
+
+    def _refresh_api_key_status(self) -> None:
+        if has_user_api_key():
+            self.api_key_status.configure(text="", foreground=theme.GREEN)
+        else:
+            self.api_key_status.configure(
+                text=(
+                    "Chave de API não adicionada. Configure OPENROUTER_API_KEY "
+                    f"em {user_env_path()}."
+                ),
+                foreground=theme.ERROR,
+            )
+
+    def _poll_api_key_status(self) -> None:
+        self._refresh_api_key_status()
+        self.after(1000, self._poll_api_key_status)
 
     def verify(self) -> None:
         claim = self.text.get("1.0", "end").strip()

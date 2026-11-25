@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import Any, Sequence
 
 import requests
 from dotenv import load_dotenv
 
-from app_paths import ensure_user_env_file, user_env_path
+from app_paths import (
+    ensure_user_env_file,
+    get_openrouter_api_key,
+    user_env_path,
+)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODELS = (
@@ -45,7 +48,7 @@ def ask_llm(
     if not selected_models or any(not model.strip() for model in selected_models):
         raise ValueError("Informe ao menos um modelo OpenRouter válido.")
 
-    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    api_key = get_openrouter_api_key()
     if not api_key:
         raise OpenRouterError(
             "Chave OpenRouter não configurada. Defina OPENROUTER_API_KEY "

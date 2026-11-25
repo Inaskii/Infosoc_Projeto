@@ -11,7 +11,11 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
-from app_paths import ensure_user_env_file, user_env_path
+from app_paths import (
+    ensure_user_env_file,
+    get_openrouter_api_key,
+    user_env_path,
+)
 from database import NewsDatabase
 
 OPENROUTER_EMBEDDINGS_API_URL = "https://openrouter.ai/api/v1/embeddings"
@@ -59,7 +63,7 @@ class OpenRouterEmbeddingService:
             # "passage" é usado para textos longos, "query" para consultas curtas.
             raise ValueError("input_type deve ser 'passage' ou 'query'")
 
-        api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        api_key = get_openrouter_api_key()
         if not api_key:
             raise OpenRouterEmbeddingError(
                 "Chave OpenRouter não configurada. Defina OPENROUTER_API_KEY "
