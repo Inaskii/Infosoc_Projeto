@@ -13,27 +13,7 @@ com Tkinter e baseada na identidade visual fornecida.
    sudo apt install ./veriunb_1.0.0_amd64.deb
    ```
 
-4. Crie a pasta de dados do usuário e abra o arquivo `.env`:
-
-   ```bash
-   mkdir -p ~/.local/share/veriunb
-   nano ~/.local/share/veriunb/.env
-   ```
-
-5. Adicione a linha abaixo, substituindo o valor de exemplo por uma chave
-   válida da OpenRouter. Salve e feche o editor:
-
-   ```dotenv
-   OPENROUTER_API_KEY=sk-or-v1-sua-chave
-   ```
-
-6. Abra o VeriUnB pelo menu de aplicativos. A configuração das fontes é criada
-   na primeira execução. Se o app já estiver aberto quando você editar o `.env`,
-   o aviso vermelho sobre a chave desaparecerá automaticamente, sem fechar ou
-   reiniciar o aplicativo. Não compartilhe sua chave.
-
-Se `XDG_DATA_HOME` estiver definido no seu ambiente, os arquivos ficam em
-`$XDG_DATA_HOME/veriunb/` em vez de `~/.local/share/veriunb/`.
+4. Crie a pasta de ambiente `.env`, siga as instruções no topico [Configuração da Chave da API](#configuração-da-chave-da-api).
 
 ## Uso
 
@@ -54,22 +34,24 @@ O aplicativo tem três telas:
 Ao abrir o aplicativo, a coleta das notícias começa em segundo plano. É
 necessário ter acesso à internet para atualizar o feed e consultar a OpenRouter.
 
-## Arquivos de dados e chave da API
+## Configuração da Chave da API
 
-No primeiro início, o aplicativo cria `scrape_urls.json` em
-`~/.local/share/veriunb/`. Se o `.env` ainda não existir, ele também cria o
-arquivo com um valor de exemplo:
+Para configurar a chave da API do OpenRouter para utilizar a IA, siga o passo a passo:
+1. Crie a pasta de ambiente `.env` no diretório `.local/share/veriunb`:
 
+```bash
+mkdir -p ~/.local/share/veriunb
+nano ~/.local/share/veriunb/.env
+```
+
+2. Adicione a linha abaixo, substituindo o valor de exemplo por uma chave válida da OpenRouter. Salve e feche o editor:
+   
 ```dotenv
 OPENROUTER_API_KEY=insira_a_chave_aqui
 ```
 
 Substitua o valor de exemplo por sua chave da OpenRouter. O banco SQLite
-`news.db` também é armazenado nessa pasta. Se `XDG_DATA_HOME` estiver definido,
-os arquivos ficam em `$XDG_DATA_HOME/veriunb/`. O aplicativo não sobrescreve
-os arquivos de configuração já existentes.
-
-O `.env` é ignorado pelo Git. Nunca compartilhe nem versione a chave.
+`news.db` e o arquivo `scrape_urls.json` com as URLs dos sites da UnB também são armazenados nessa pasta. Se `XDG_DATA_HOME` estiver definido, os arquivos ficam em `$XDG_DATA_HOME/veriunb/`. O aplicativo não sobrescreve os arquivos de configuração já existentes.
 
 ## Desenvolvimento
 
