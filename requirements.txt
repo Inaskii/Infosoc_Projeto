@@ -1,5 +1,0 @@
-# Application dependencies, including Trafilatura for homepage scraping.
-requests
-python-dotenv
-trafilatura
-pyinstaller
